@@ -12,6 +12,7 @@ import NotFoundPage from "./pages/NotFoundPage";
 import RegisterPage from "./pages/RegisterPage";
 import ReportsPage from "./pages/ReportsPage";
 import ContributionPage from "./pages/ContributionPage";
+import { AuthProvider } from "./context/AuthContext";
 
 class App extends Component {
   renderProtectedPage(page) {
@@ -24,34 +25,39 @@ class App extends Component {
 
   render() {
     return (
-      <Routes>
-        <Route path="/" element={<HomePage />} />
-        <Route path="/login" element={<LoginPage />} />
-        <Route path="/register" element={<RegisterPage />} />
-        <Route
-          path="/dashboard"
-          element={this.renderProtectedPage(<DashboardPage />)}
-        />
-        <Route
-          path="/groups"
-          element={this.renderProtectedPage(<GroupPage />)}
-        />
-        <Route
-          path="/members"
-          element={this.renderProtectedPage(<MemberPage />)}
-        />
-        <Route
-          path="/contributions"
-          element={this.renderProtectedPage(<ContributionPage />)}
-        />
-        <Route path="/loans" element={this.renderProtectedPage(<LoanPage />)} />
-        <Route
-          path="/reports"
-          element={this.renderProtectedPage(<ReportsPage />)}
-        />
-        <Route path="/home" element={<Navigate to="/" replace />} />
-        <Route path="*" element={<NotFoundPage />} />
-      </Routes>
+      <AuthProvider>
+        <Routes>
+          <Route path="/" element={<HomePage />} />
+          <Route path="/login" element={<LoginPage />} />
+          <Route path="/register" element={<RegisterPage />} />
+          <Route
+            path="/dashboard"
+            element={this.renderProtectedPage(<DashboardPage />)}
+          />
+          <Route
+            path="/groups"
+            element={this.renderProtectedPage(<GroupPage />)}
+          />
+          <Route
+            path="/members"
+            element={this.renderProtectedPage(<MemberPage />)}
+          />
+          <Route
+            path="/contributions"
+            element={this.renderProtectedPage(<ContributionPage />)}
+          />
+          <Route 
+            path="/loans" 
+            element={this.renderProtectedPage(<LoanPage />)} 
+          />
+          <Route
+            path="/reports"
+            element={this.renderProtectedPage(<ReportsPage />)}
+          />
+          <Route path="/home" element={<Navigate to="/" replace />} />
+          <Route path="*" element={<NotFoundPage />} />
+        </Routes>
+      </AuthProvider>
     );
   }
 }

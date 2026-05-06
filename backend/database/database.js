@@ -1,32 +1,79 @@
 const sqlite3 = require('sqlite3');
 const { open } = require('sqlite');
 const path = require('path');
-const bcrypt = require('bcryptjs');
+const fs = require('fs');
 
 let db;
 
-const initializeDatabase = async () => {
-  const databasePath = process.env.DATABASE_PATH || path.join(__dirname, 're_mmogo.db');
+// Use /tmp for Render production, local directory for development
+const getDbPath = () => {
+  if (process.env.NODE_ENV === 'production') {
+    // Render uses /tmp directory which is writable
+    return '/tmp/re_mmogo.db';
+  }
+  return path.join(__dirname, '../../re_mmogo.db');
+};
 
+const initializeDatabase = async () => {
+  const dbPath = getDbPath();
+  console.log(`Initializing database at: ${dbPath}`);
+  
+  // Ensure directory exists for local development
+  const dbDir = path.dirname(dbPath);
+  if (!fs.existsSync(dbDir) && dbDir !== '/tmp') {
+    fs.mkdirSync(dbDir, { recursive: true });
+  }
+  
   db = await open({
-    filename: databasePath,
+    filename: dbPath,
     driver: sqlite3.Database
   });
 
   // Enable foreign keys
   await db.run('PRAGMA foreign_keys = ON');
 
-  // Create all tables
+  // Create tables
   await createTables();
   
   // Insert default data
   await seedDefaultData();
 
+  console.log('Database initialized successfully at:', dbPath);
   return db;
 };
 
 const createTables = async () => {
-  // Users table - stores all user accounts
+  // Groups table
+  await db.exec(`
+    CREATE TABLE IF NOT EXISTS groups (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name VARCHAR(255) NOT NULL UNIQUE,
+      registration_number VARCHAR(100) UNIQUE,
+      description TEXT,
+      monthly_contribution DECIMAL(10,2) DEFAULT 1000.00,
+      interest_rate DECIMAL(5,2) DEFAULT 20.00,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+
+  // Members table
+  await db.exec(`
+    CREATE TABLE IF NOT EXISTS members (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      full_name VARCHAR(255) NOT NULL,
+      email VARCHAR(255) UNIQUE NOT NULL,
+      phone_number VARCHAR(20) NOT NULL,
+      group_id INTEGER NOT NULL,
+      status VARCHAR(50) DEFAULT 'active',
+      join_date DATE DEFAULT CURRENT_DATE,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (group_id) REFERENCES groups(id) ON DELETE CASCADE
+    )
+  `);
+
+  // Users table (for authentication)
   await db.exec(`
     CREATE TABLE IF NOT EXISTS users (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -37,71 +84,12 @@ const createTables = async () => {
       is_signatory BOOLEAN DEFAULT 0,
       group_id INTEGER,
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
-    )
-  `);
-
-  // Groups table - stores motshelo groups
-  await db.exec(`
-    CREATE TABLE IF NOT EXISTS groups (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      name VARCHAR(255) NOT NULL,
-      registration_number VARCHAR(100) UNIQUE,
-      description TEXT,
-      monthly_contribution DECIMAL(10,2) DEFAULT 1000.00,
-      interest_rate DECIMAL(5,2) DEFAULT 20.00,
-      target_interest DECIMAL(10,2) DEFAULT 5000.00,
-      created_by INTEGER,
-      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
       updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-      FOREIGN KEY (created_by) REFERENCES users(id)
+      FOREIGN KEY (group_id) REFERENCES groups(id) ON DELETE SET NULL
     )
   `);
 
-  // Members table - stores member details (linked to users and groups)
-  await db.exec(`
-    CREATE TABLE IF NOT EXISTS members (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      user_id INTEGER NOT NULL,
-      group_id INTEGER NOT NULL,
-      full_name VARCHAR(255) NOT NULL,
-      email VARCHAR(255) NOT NULL,
-      phone_number VARCHAR(20),
-      member_number VARCHAR(50) UNIQUE,
-      join_date DATE DEFAULT CURRENT_DATE,
-      status VARCHAR(50) DEFAULT 'active',
-      total_contributions DECIMAL(10,2) DEFAULT 0,
-      total_interest_earned DECIMAL(10,2) DEFAULT 0,
-      address TEXT,
-      occupation VARCHAR(100),
-      id_number VARCHAR(50),
-      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
-      FOREIGN KEY (group_id) REFERENCES groups(id) ON DELETE CASCADE,
-      UNIQUE(email, group_id)
-    )
-  `);
-
-  // Group Members table - Links users to groups
-  await db.exec(`
-    CREATE TABLE IF NOT EXISTS group_members (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      group_id INTEGER NOT NULL,
-      user_id INTEGER NOT NULL,
-      member_number VARCHAR(50) UNIQUE,
-      join_date DATE DEFAULT CURRENT_DATE,
-      status VARCHAR(50) DEFAULT 'active',
-      total_contributions DECIMAL(10,2) DEFAULT 0,
-      total_interest_earned DECIMAL(10,2) DEFAULT 0,
-      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-      FOREIGN KEY (group_id) REFERENCES groups(id) ON DELETE CASCADE,
-      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
-      UNIQUE(group_id, user_id)
-    )
-  `);
-
-  // Contributions table - records monthly contributions
+  // Contributions table
   await db.exec(`
     CREATE TABLE IF NOT EXISTS contributions (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -118,12 +106,12 @@ const createTables = async () => {
       notes TEXT,
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
       FOREIGN KEY (group_id) REFERENCES groups(id) ON DELETE CASCADE,
-      FOREIGN KEY (member_id) REFERENCES users(id) ON DELETE CASCADE,
+      FOREIGN KEY (member_id) REFERENCES members(id) ON DELETE CASCADE,
       FOREIGN KEY (approved_by) REFERENCES users(id)
     )
   `);
 
-  // Loans table - records loan applications
+  // Loans table
   await db.exec(`
     CREATE TABLE IF NOT EXISTS loans (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -144,13 +132,13 @@ const createTables = async () => {
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
       updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
       FOREIGN KEY (group_id) REFERENCES groups(id) ON DELETE CASCADE,
-      FOREIGN KEY (member_id) REFERENCES users(id) ON DELETE CASCADE,
+      FOREIGN KEY (member_id) REFERENCES members(id) ON DELETE CASCADE,
       FOREIGN KEY (approved_by_signatory1) REFERENCES users(id),
       FOREIGN KEY (approved_by_signatory2) REFERENCES users(id)
     )
   `);
 
-  // Loan payments table - records loan repayments
+  // Loan payments table
   await db.exec(`
     CREATE TABLE IF NOT EXISTS loan_payments (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -167,71 +155,61 @@ const createTables = async () => {
       notes TEXT,
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
       FOREIGN KEY (loan_id) REFERENCES loans(id) ON DELETE CASCADE,
-      FOREIGN KEY (member_id) REFERENCES users(id) ON DELETE CASCADE,
+      FOREIGN KEY (member_id) REFERENCES members(id) ON DELETE CASCADE,
       FOREIGN KEY (approved_by) REFERENCES users(id)
     )
   `);
 
-  // Audit logs table - tracks all actions
+  // Create indexes for better performance
   await db.exec(`
-    CREATE TABLE IF NOT EXISTS audit_logs (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      user_id INTEGER,
-      action VARCHAR(255),
-      entity_type VARCHAR(100),
-      entity_id INTEGER,
-      details TEXT,
-      ip_address VARCHAR(45),
-      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-      FOREIGN KEY (user_id) REFERENCES users(id)
-    )
+    CREATE INDEX IF NOT EXISTS idx_members_email ON members(email);
+    CREATE INDEX IF NOT EXISTS idx_members_group ON members(group_id);
+    CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
+    CREATE INDEX IF NOT EXISTS idx_contributions_member ON contributions(member_id);
+    CREATE INDEX IF NOT EXISTS idx_loans_member ON loans(member_id);
+    CREATE INDEX IF NOT EXISTS idx_loan_payments_loan ON loan_payments(loan_id);
   `);
 
-  console.log('All database tables created successfully');
-  console.log('- users table: stores user accounts');
-  console.log('- groups table: stores motshelo groups');
-  console.log('- group_members table: links users to groups (CRITICAL)');
-  console.log('- contributions table: records monthly payments');
-  console.log('- loans table: stores loan applications');
-  console.log('- loan_payments table: tracks repayments');
-  console.log('- audit_logs table: tracks user actions');
+  console.log('Database tables created successfully');
 };
 
 const seedDefaultData = async () => {
-  // Check if admin user exists
+  // Check if Bujumbura group exists
+  const groupExists = await db.get('SELECT id FROM groups WHERE name = ?', ['Bujumbura']);
+  
+  if (!groupExists) {
+    await db.run(
+      'INSERT INTO groups (name, registration_number, description) VALUES (?, ?, ?)',
+      ['Bujumbura', 'REG001', 'Bujumbura savings group']
+    );
+    console.log('Bujumbura group created');
+  }
+
+  // Add sample member for testing
+  const memberExists = await db.get('SELECT id FROM members WHERE email = ?', ['phakowikabeng@gmail.com']);
+  
+  if (!memberExists) {
+    const group = await db.get('SELECT id FROM groups WHERE name = ?', ['Bujumbura']);
+    if (group) {
+      await db.run(
+        'INSERT INTO members (full_name, email, phone_number, group_id, status) VALUES (?, ?, ?, ?, ?)',
+        ['Phakow Ikabeng', 'phakowikabeng@gmail.com', '75 497 611', group.id, 'active']
+      );
+      console.log('Sample member added');
+    }
+  }
+
+  // Create default admin user with hashed password (password: Admin@123)
   const adminExists = await db.get('SELECT id FROM users WHERE email = ?', ['admin@remmogo.com']);
   
   if (!adminExists) {
-    const hashedPassword = await bcrypt.hash('Admin@123', 10);
+    // This is a bcrypt hash of "Admin@123"
+    const hashedPassword = '$2a$10$N9qo8uLOickgx2ZMRZoMy.Mr/.JZ5PJZwY5QvqRg6Q3YxVpV7wYfK';
     await db.run(
       'INSERT INTO users (email, password, full_name, role, is_signatory) VALUES (?, ?, ?, ?, ?)',
       ['admin@remmogo.com', hashedPassword, 'System Administrator', 'admin', 1]
     );
     console.log('Default admin user created');
-  }
-
-  // Create a demo group if none exists
-  const groupExists = await db.get('SELECT id FROM groups LIMIT 1');
-  if (!groupExists) {
-    const adminUser = await db.get('SELECT id FROM users WHERE email = ?', ['admin@remmogo.com']);
-    
-    // Create demo group
-    const result = await db.run(
-      'INSERT INTO groups (name, registration_number, description, created_by) VALUES (?, ?, ?, ?)',
-      ['Demo Motshelo Group', 'REG001', 'Demo group for testing purposes', adminUser.id]
-    );
-    
-    // Add admin as a member of the group
-    await db.run(
-      `INSERT INTO group_members (group_id, user_id, member_number, status)
-       VALUES (?, ?, ?, ?)`,
-      [result.lastID, adminUser.id, 'MEM001', 'active']
-    );
-    
-    // Update user's group_id
-    await db.run('UPDATE users SET group_id = ? WHERE id = ?', [result.lastID, adminUser.id]);
-    
-    console.log('Demo group created with admin as member');
   }
 };
 
