@@ -1,6 +1,7 @@
 // Frontend/src/services/memberService.js
 import axios from 'axios';
-import API_URL from '../config/api';
+
+const API_URL = import.meta.env.VITE_API_URL || 'https://re-mmogo-backend-i5uc.onrender.com';
 
 const api = axios.create({
   baseURL: API_URL,
@@ -11,7 +12,6 @@ const api = axios.create({
 });
 
 export const memberService = {
-  // Get all members
   getAllMembers: async () => {
     try {
       const response = await api.get('/api/members');
@@ -22,7 +22,6 @@ export const memberService = {
     }
   },
 
-  // Get single member by ID
   getMemberById: async (id) => {
     try {
       const response = await api.get(`/api/members/${id}`);
@@ -33,7 +32,6 @@ export const memberService = {
     }
   },
 
-  // Create new member
   createMember: async (memberData) => {
     try {
       const response = await api.post('/api/members', memberData);
@@ -44,7 +42,6 @@ export const memberService = {
     }
   },
 
-  // Update member
   updateMember: async (id, memberData) => {
     try {
       const response = await api.put(`/api/members/${id}`, memberData);
@@ -55,7 +52,6 @@ export const memberService = {
     }
   },
 
-  // Delete member
   deleteMember: async (id) => {
     try {
       const response = await api.delete(`/api/members/${id}`);

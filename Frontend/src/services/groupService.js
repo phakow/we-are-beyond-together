@@ -1,6 +1,8 @@
 // Frontend/src/services/groupService.js
+// Frontend/src/services/groupService.js
 import axios from 'axios';
-import API_URL from '../config/api';
+
+const API_URL = import.meta.env.VITE_API_URL || 'https://re-mmogo-backend-i5uc.onrender.com';
 
 const api = axios.create({
   baseURL: API_URL,
@@ -10,8 +12,8 @@ const api = axios.create({
   },
 });
 
+// Named exports
 export const groupService = {
-  // Get all groups
   getAllGroups: async () => {
     try {
       const response = await api.get('/api/groups');
@@ -22,7 +24,6 @@ export const groupService = {
     }
   },
 
-  // Get single group by ID
   getGroupById: async (id) => {
     try {
       const response = await api.get(`/api/groups/${id}`);
@@ -33,7 +34,6 @@ export const groupService = {
     }
   },
 
-  // Create new group
   createGroup: async (groupData) => {
     try {
       const response = await api.post('/api/groups', groupData);
