@@ -15,7 +15,8 @@ class DashboardPage extends Component {
         totalLoans: 0,
         recentMembers: []
       },
-      loading: true
+      loading: true,
+      error: null
     };
   }
 
@@ -25,7 +26,7 @@ class DashboardPage extends Component {
 
   fetchDashboardData = async () => {
     try {
-      this.setState({ loading: true });
+      this.setState({ loading: true, error: null });
       
       // Fetch all data in parallel
       const [membersRes, groupsRes, contributionsRes, loansRes] = await Promise.all([
@@ -52,7 +53,10 @@ class DashboardPage extends Component {
       });
     } catch (error) {
       console.error("Error fetching dashboard data:", error);
-      this.setState({ loading: false });
+      this.setState({ 
+        loading: false, 
+        error: "Failed to load dashboard data. Please check if the backend is running." 
+      });
     }
   };
 
@@ -65,14 +69,14 @@ class DashboardPage extends Component {
         borderRadius: "8px",
         boxShadow: "0 2px 4px rgba(0,0,0,0.1)"
       }}>
-        <h3 style={{ margin: "0 0 10px 0", fontSize: "16px" }}>{title}</h3>
+        <h3 style={{ margin: "0 0 10px 0", fontSize: "16px", fontWeight: "normal" }}>{title}</h3>
         <p style={{ margin: "0", fontSize: "36px", fontWeight: "bold" }}>{value}</p>
       </div>
     );
   }
 
   render() {
-    const { stats, loading } = this.state;
+    const { stats, loading, error } = this.state;
 
     if (loading) {
       return (
@@ -82,9 +86,30 @@ class DashboardPage extends Component {
       );
     }
 
+    if (error) {
+      return (
+        <div style={{ padding: "40px", textAlign: "center" }}>
+          <p style={{ color: "red" }}>{error}</p>
+          <button 
+            onClick={() => this.fetchDashboardData()}
+            style={{
+              padding: "10px 20px",
+              backgroundColor: "#007bff",
+              color: "white",
+              border: "none",
+              borderRadius: "5px",
+              cursor: "pointer"
+            }}
+          >
+            Retry
+          </button>
+        </div>
+      );
+    }
+
     return (
       <div style={{ padding: "20px" }}>
-        <h1 style={{ marginBottom: "20px" }}>Dashboard</h1>
+        <h1 style={{ marginBottom: "20px", fontSize: "28px" }}>Dashboard</h1>
         
         {/* Stats Cards */}
         <div style={{
@@ -99,31 +124,51 @@ class DashboardPage extends Component {
           {this.renderStatCard("Total Loans", stats.totalLoans, "#dc3545")}
         </div>
 
-        {/* Recent Members */}
+        {/* Recent Members Section */}
         <div style={{
           backgroundColor: "white",
           borderRadius: "8px",
           padding: "20px",
           boxShadow: "0 2px 4px rgba(0,0,0,0.1)"
         }}>
-          <h2 style={{ marginBottom: "15px" }}>Recent Members</h2>
+          <h2 style={{ marginBottom: "15px", fontSize: "20px" }}>Recent Members</h2>
           {stats.recentMembers.length === 0 ? (
-            <p>No members found.</p>
+            <p style={{ color: "#666" }}>No members found. Add your first member!</p>
           ) : (
             <table style={{ width: "100%", borderCollapse: "collapse" }}>
               <thead>
-                <tr style={{ borderBottom: "1px solid #ddd" }}>
-                  <th style={{ padding: "10px", textAlign: "left" }}>Name</th>
-                  <th style={{ padding: "10px", textAlign: "left" }}>Email</th>
-                  <th style={{ padding: "10px", textAlign: "left" }}>Group</th>
+                <tr style={{ borderBottom: "2px solid #ddd", backgroundColor: "#f5f5f5" }}>
+                  <th style={{ padding: "12px", textAlign: "left" }}>Name</th>
+                  <th style={{ padding: "12px", textAlign: "left" }}>Email</th>
+                  <th style={{ padding: "12px", textAlign: "left" }}>Phone</th>
+                  <th style={{ padding: "12px", textAlign: "left" }}>Group</th>
+                  <th style={{ padding: "12px", textAlign: "left" }}>Status</th>
                 </tr>
               </thead>
               <tbody>
-                {stats.recentMembers.map((member) => (
-                  <tr key={member.id} style={{ borderBottom: "1px solid #eee" }}>
-                    <td style={{ padding: "10px" }}>{member.name}</td>
+                {stats.recentMembers.map((member, index) => (
+                  <tr 
+                    key={member.id} 
+                    style={{ 
+                      borderBottom: "1px solid #eee",
+                      backgroundColor: index % 2 === 0 ? "#fff" : "#f9f9f9"
+                    }}
+                  >
+                    <td style={{ padding: "10px" }}>{member.name || member.full_name}</td>
                     <td style={{ padding: "10px" }}>{member.email}</td>
-                    <td style={{ padding: "10px" }}>{member.group_name}</td>
+                    <td style={{ padding: "10px" }}>{member.phone_number || "N/A"}</td>
+                    <td style={{ padding: "10px" }}>{member.group_name || "N/A"}</td>
+                    <td style={{ padding: "10px" }}>
+                      <span style={{
+                        padding: "3px 8px",
+                        borderRadius: "3px",
+                        backgroundColor: member.status === "active" ? "#d4edda" : "#f8d7da",
+                        color: member.status === "active" ? "#155724" : "#721c24",
+                        fontSize: "12px"
+                      }}>
+                        {member.status || "active"}
+                      </span>
+                    </td>
                   </tr>
                 ))}
               </tbody>
